@@ -23,6 +23,9 @@ Base.prepare(autoload_with=engine)
 Station = Base.classes.station
 Measurement = Base.classes.measurement
 
+# Create our session (link) from Python to the DB
+session = Session(engine)
+
 
 #################################################
 # Flask Setup
@@ -33,14 +36,15 @@ app = Flask(__name__)
 #################################################
 # Global Constant Setup
 #################################################
-with Session(engine) as session:
-    # Find the oldest date in the data set
-    date_query = session.query(func.min(Measurement.date)).first()
-    CONST_OLDEST_DATE = dt.datetime.strptime(date_query[0], '%Y-%m-%d').date()
+# Find the oldest date in the data set
+date_query = session.query(func.min(Measurement.date)).first()
+CONST_OLDEST_DATE = dt.datetime.strptime(date_query[0], '%Y-%m-%d').date()
 
-    # Find the newest date in the data set.
-    date_query = session.query(func.max(Measurement.date)).first()
-    CONST_NEWEST_DATE = dt.datetime.strptime(date_query[0], '%Y-%m-%d').date()
+# Find the newest date in the data set.
+date_query = session.query(func.max(Measurement.date)).first()
+CONST_NEWEST_DATE = dt.datetime.strptime(date_query[0], '%Y-%m-%d').date()
+
+session.close()
 
 
 #################################################
@@ -65,9 +69,10 @@ def get_precipitation_data():
     # Calculate the date one year from the last date in data set.
     target_date = CONST_NEWEST_DATE - dt.timedelta(days=365)
     
-    with Session(engine) as session:
-        # Perform a query to retrieve the data and precipitation scores
-        prcp_query = session.query(Measurement.date, Measurement.prcp).filter(Measurement.date.between(target_date, CONST_NEWEST_DATE)).all()
+    # Perform a query to retrieve the data and precipitation scores
+    prcp_query = session.query(Measurement.date, Measurement.prcp).filter(Measurement.date.between(target_date, CONST_NEWEST_DATE)).all()
+    
+    session.close()
 
     # Display the query result as a jsonified dictionary
     precipitation_data = dict(prcp_query)
@@ -76,9 +81,10 @@ def get_precipitation_data():
 
 @app.route('/api/v1.0/stations')
 def get_stations():
-    with Session(engine) as session:
-        # Perform a query to retrieve the station names
-        station_query = session.query(Station.name).all()
+    # Perform a query to retrieve the station names
+    station_query = session.query(Station.name).all()
+    
+    session.close()
 
     # Flatten the query result into a normal list to jsonify and display
     station_list = list(ravel(station_query))
@@ -90,15 +96,16 @@ def get_temperature_data():
     # Calculate the date one year from the last date in data set.
     target_date = CONST_NEWEST_DATE - dt.timedelta(days=365)
     
-    with Session(engine) as session:
-        # Design a query to find the most active station
-        station_count = func.count(Measurement.station)
-        station_activity_query = session.query(Measurement.station, station_count).group_by(Measurement.station).order_by(station_count.desc()).all()
-        most_active_station = station_activity_query[0].station
+    # Design a query to find the most active station
+    station_count = func.count(Measurement.station)
+    station_activity_query = session.query(Measurement.station, station_count).group_by(Measurement.station).order_by(station_count.desc()).all()
+    most_active_station = station_activity_query[0].station
 
-        # Using the most active station id query the last 12 months of temperature observation data for this station
-        tobs_query = session.query(Measurement.date, Measurement.tobs).\
-            filter(Measurement.station == most_active_station, Measurement.date.between(target_date, CONST_NEWEST_DATE)).all()
+    # Using the most active station id query the last 12 months of temperature observation data for this station
+    tobs_query = session.query(Measurement.date, Measurement.tobs).\
+        filter(Measurement.station == most_active_station, Measurement.date.between(target_date, CONST_NEWEST_DATE)).all()
+    
+    session.close()
 
     # Display the query result as a jsonified dictionary
     temperature_data = dict(tobs_query)
@@ -140,11 +147,12 @@ def get_temperature_stats_start_end(start, end):
 # Functions
 #################################################
 def get_temperature_stats(start_date, end_date):
-    with Session(engine) as session:
-        # Query for temperature stats in the requested range
-        tobs_query = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
-            filter(Measurement.date.between(start_date, end_date)).all()
+    # Query for temperature stats in the requested range
+    tobs_query = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
+        filter(Measurement.date.between(start_date, end_date)).all()
     
+    session.close()
+
     return tobs_query
 
 
